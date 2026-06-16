@@ -34,6 +34,15 @@ export default async function AdminPage() {
     moderation_keyword_lists: [],
     moderation_keyword_count: 0,
     active_moderation_keyword_count: 0,
+    moderation_llm_settings: {
+      enabled: false,
+      base_url: "https://api.openai.com/v1/responses",
+      model: "gpt-4.1-mini",
+      prompt: "",
+      api_key_configured: false,
+      api_key_hint: null,
+      updated_at: null,
+    },
     reports: []
   }
 

@@ -133,6 +133,29 @@ export async function setUserRole(userId: string, role: "user" | "admin") {
   revalidatePath("/admin")
 }
 
+export async function updateModerationLlmSettings(settings: {
+  enabled: boolean
+  baseUrl: string
+  apiKey?: string
+  clearApiKey?: boolean
+  model: string
+  prompt: string
+}) {
+  const supabase = await getAdminSupabase()
+
+  const { error } = await supabase.rpc("admin_update_moderation_llm_settings", {
+    p_enabled: settings.enabled,
+    p_base_url: settings.baseUrl,
+    p_api_key: settings.apiKey?.trim() || null,
+    p_clear_api_key: Boolean(settings.clearApiKey),
+    p_model: settings.model,
+    p_prompt: settings.prompt,
+  })
+
+  if (error) throw new Error(error.message)
+  revalidatePath("/admin")
+}
+
 // 8. Fetch all admin data (bypasses RLS via SECURITY DEFINER)
 export async function fetchAdminData() {
   const supabase = await getAdminSupabase()

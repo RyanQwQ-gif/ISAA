@@ -8,8 +8,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { format } from "date-fns"
-import { Trash2, UserX, Megaphone, Loader2, AlertTriangle, CheckCircle2, XCircle, Pin, Shield, Download, Upload } from "lucide-react"
+import { Trash2, UserX, Megaphone, Loader2, AlertTriangle, CheckCircle2, XCircle, Pin, Shield, Download, Upload, Bot } from "lucide-react"
 import {
   deleteUserActivity,
   deleteUser,
@@ -19,6 +20,7 @@ import {
   reviewArticle,
   setArticlePinned,
   setUserRole,
+  updateModerationLlmSettings,
 } from "@/app/admin/actions"
 
 interface AdminData {
@@ -32,6 +34,7 @@ interface AdminData {
   moderation_keyword_lists?: ModerationKeywordList[]
   moderation_keyword_count?: number
   active_moderation_keyword_count?: number
+  moderation_llm_settings?: ModerationLlmSettings
   reports: unknown[]
 }
 
@@ -86,6 +89,19 @@ interface ModerationKeywordList {
   created_by?: { display_name?: string | null } | null
 }
 
+interface ModerationLlmSettings {
+  enabled?: boolean
+  base_url?: string
+  model?: string
+  prompt?: string
+  api_key_configured?: boolean
+  api_key_hint?: string | null
+  updated_at?: string | null
+}
+
+const DEFAULT_LLM_PROMPT =
+  "You are an academic discussion platform moderation system. Review every submitted post. Return only JSON with status approved, pending, or rejected; reason; and score from 0 to 1. Reject spam, advertising, abuse, harassment, sexual content, doxxing, threats, plagiarism requests, and obvious non-academic junk. Use pending for uncertain cases, sensitive topics, low-quality but salvageable posts, or posts requiring human context. Approve legitimate academic discussion, research proposals, event recaps, questions, and peer feedback. Be fair to non-native speakers and students making genuine academic contributions."
+
 export function AdminDashboardClient({ initialData }: { initialData: AdminData }) {
   const [loading, setLoading] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
@@ -95,6 +111,12 @@ export function AdminDashboardClient({ initialData }: { initialData: AdminData }
   // Announcement State
   const [annTitle, setAnnTitle] = useState("")
   const [annContent, setAnnContent] = useState("")
+  const [llmEnabled, setLlmEnabled] = useState(Boolean(initialData.moderation_llm_settings?.enabled))
+  const [llmBaseUrl, setLlmBaseUrl] = useState(initialData.moderation_llm_settings?.base_url || "https://api.openai.com/v1/responses")
+  const [llmApiKey, setLlmApiKey] = useState("")
+  const [llmClearApiKey, setLlmClearApiKey] = useState(false)
+  const [llmModel, setLlmModel] = useState(initialData.moderation_llm_settings?.model || "gpt-4.1-mini")
+  const [llmPrompt, setLlmPrompt] = useState(initialData.moderation_llm_settings?.prompt || DEFAULT_LLM_PROMPT)
 
   const wrapAction = async (id: string, action: () => Promise<void>) => {
     setLoading(id)
@@ -432,6 +454,107 @@ export function AdminDashboardClient({ initialData }: { initialData: AdminData }
                 </tbody>
               </table>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-sm border-slate-200">
+          <CardHeader className="bg-slate-50/50 border-b pb-4">
+            <CardTitle className="font-serif">LLM Moderation</CardTitle>
+            <CardDescription>Configure the OpenAI-compatible Responses API call used after keyword screening.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5 p-6">
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50/70 p-4">
+              <div>
+                <p className="text-sm font-medium text-slate-900">Enable LLM review</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  If disabled or unavailable, posts that pass keywords go to manual review.
+                </p>
+                <p className="mt-1 text-xs text-amber-700">
+                  Runtime database settings require SUPABASE_SERVICE_ROLE_KEY on the server; environment variables remain available as a fallback.
+                </p>
+              </div>
+              <Switch checked={llmEnabled} onCheckedChange={setLlmEnabled} aria-label="Enable LLM moderation" />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="llm-base-url">Base URL</Label>
+                <Input
+                  id="llm-base-url"
+                  value={llmBaseUrl}
+                  onChange={(e) => setLlmBaseUrl(e.target.value)}
+                  placeholder="https://api.openai.com/v1/responses"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="llm-model">Model</Label>
+                <Input
+                  id="llm-model"
+                  value={llmModel}
+                  onChange={(e) => setLlmModel(e.target.value)}
+                  placeholder="gpt-4.1-mini"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="llm-api-key">API Key</Label>
+              <Input
+                id="llm-api-key"
+                type="password"
+                value={llmApiKey}
+                onChange={(e) => {
+                  setLlmApiKey(e.target.value)
+                  if (e.target.value) setLlmClearApiKey(false)
+                }}
+                placeholder={initialData.moderation_llm_settings?.api_key_hint || "Paste a new key to update"}
+              />
+              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                <Badge variant={initialData.moderation_llm_settings?.api_key_configured ? "secondary" : "outline"}>
+                  {initialData.moderation_llm_settings?.api_key_configured ? `Configured ${initialData.moderation_llm_settings?.api_key_hint || ""}` : "No key configured"}
+                </Badge>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={llmClearApiKey}
+                    onChange={(e) => {
+                      setLlmClearApiKey(e.target.checked)
+                      if (e.target.checked) setLlmApiKey("")
+                    }}
+                  />
+                  Clear saved key
+                </label>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="llm-prompt">System Prompt</Label>
+              <Textarea
+                id="llm-prompt"
+                value={llmPrompt}
+                onChange={(e) => setLlmPrompt(e.target.value)}
+                className="min-h-40 resize-y"
+              />
+            </div>
+
+            <Button
+              onClick={() => wrapAction("save-llm-settings", async () => {
+                await updateModerationLlmSettings({
+                  enabled: llmEnabled,
+                  baseUrl: llmBaseUrl,
+                  apiKey: llmApiKey,
+                  clearApiKey: llmClearApiKey,
+                  model: llmModel,
+                  prompt: llmPrompt,
+                })
+                setLlmApiKey("")
+                setLlmClearApiKey(false)
+              })}
+              disabled={!llmBaseUrl.trim() || !llmModel.trim() || !llmPrompt.trim()}
+            >
+              {loading === "save-llm-settings" ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Bot className="mr-1.5 h-4 w-4" />}
+              Save LLM Settings
+            </Button>
           </CardContent>
         </Card>
       </TabsContent>
