@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -21,6 +21,7 @@ import {
   setArticlePinned,
   setUserRole,
   updateModerationLlmSettings,
+  fetchAdminData,
 } from "@/app/admin/actions"
 
 interface AdminData {
@@ -102,13 +103,39 @@ interface ModerationLlmSettings {
 const DEFAULT_LLM_PROMPT =
   "You are an academic discussion platform moderation system. Review every submitted post. Return only JSON with status approved, pending, or rejected; reason; and score from 0 to 1. Reject spam, advertising, abuse, harassment, sexual content, doxxing, threats, plagiarism requests, and obvious non-academic junk. Use pending for uncertain cases, sensitive topics, low-quality but salvageable posts, or posts requiring human context. Approve legitimate academic discussion, research proposals, event recaps, questions, and peer feedback. Be fair to non-native speakers and students making genuine academic contributions."
 
+const EMPTY_ADMIN_DATA: AdminData = {
+  articles: [],
+  pending_articles: [],
+  events: [],
+  documents: [],
+  users: [],
+  tags: [],
+  announcements: [],
+  moderation_keyword_lists: [],
+  moderation_keyword_count: 0,
+  active_moderation_keyword_count: 0,
+  moderation_llm_settings: {
+    enabled: false,
+    base_url: "https://api.openai.com/v1/responses",
+    model: "gpt-4.1-mini",
+    prompt: DEFAULT_LLM_PROMPT,
+    api_key_configured: false,
+    api_key_hint: null,
+    updated_at: null,
+  },
+  reports: [],
+}
+
 export function AdminDashboardClient({
   initialData,
   hasServiceRoleKey,
 }: {
-  initialData: AdminData
+  initialData?: AdminData
   hasServiceRoleKey: boolean
 }) {
+  const [adminData, setAdminData] = useState<AdminData>(initialData || EMPTY_ADMIN_DATA)
+  const [dataLoading, setDataLoading] = useState(!initialData)
+  const [dataError, setDataError] = useState<string | null>(null)
   const [loading, setLoading] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [keywordImportResult, setKeywordImportResult] = useState<string | null>(null)
@@ -118,12 +145,36 @@ export function AdminDashboardClient({
   // Announcement State
   const [annTitle, setAnnTitle] = useState("")
   const [annContent, setAnnContent] = useState("")
-  const [llmEnabled, setLlmEnabled] = useState(Boolean(initialData.moderation_llm_settings?.enabled))
-  const [llmBaseUrl, setLlmBaseUrl] = useState(initialData.moderation_llm_settings?.base_url || "https://api.openai.com/v1/responses")
+  const [llmEnabled, setLlmEnabled] = useState(Boolean(adminData.moderation_llm_settings?.enabled))
+  const [llmBaseUrl, setLlmBaseUrl] = useState(adminData.moderation_llm_settings?.base_url || "https://api.openai.com/v1/responses")
   const [llmApiKey, setLlmApiKey] = useState("")
   const [llmClearApiKey, setLlmClearApiKey] = useState(false)
-  const [llmModel, setLlmModel] = useState(initialData.moderation_llm_settings?.model || "gpt-4.1-mini")
-  const [llmPrompt, setLlmPrompt] = useState(initialData.moderation_llm_settings?.prompt || DEFAULT_LLM_PROMPT)
+  const [llmModel, setLlmModel] = useState(adminData.moderation_llm_settings?.model || "gpt-4.1-mini")
+  const [llmPrompt, setLlmPrompt] = useState(adminData.moderation_llm_settings?.prompt || DEFAULT_LLM_PROMPT)
+
+  const loadAdminData = useCallback(async () => {
+    setDataLoading(true)
+    setDataError(null)
+
+    try {
+      const data = await fetchAdminData()
+      const nextData = (data as AdminData) || EMPTY_ADMIN_DATA
+      setAdminData(nextData)
+      setLlmEnabled(Boolean(nextData.moderation_llm_settings?.enabled))
+      setLlmBaseUrl(nextData.moderation_llm_settings?.base_url || "https://api.openai.com/v1/responses")
+      setLlmModel(nextData.moderation_llm_settings?.model || "gpt-4.1-mini")
+      setLlmPrompt(nextData.moderation_llm_settings?.prompt || DEFAULT_LLM_PROMPT)
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Unknown error"
+      setDataError(message)
+    } finally {
+      setDataLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadAdminData()
+  }, [loadAdminData])
 
   const wrapAction = async (id: string, action: () => Promise<void>) => {
     setLoading(id)
@@ -169,7 +220,7 @@ export function AdminDashboardClient({
       }
 
       setKeywordImportResult(`Imported ${result.imported} keywords.`)
-      window.location.reload()
+      await loadAdminData()
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Unknown error"
       alert("Error: " + message)
@@ -191,7 +242,7 @@ export function AdminDashboardClient({
         throw new Error(result.error || "Failed to delete keyword file.")
       }
 
-      window.location.reload()
+      await loadAdminData()
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Unknown error"
       alert("Error: " + message)
@@ -257,17 +308,35 @@ export function AdminDashboardClient({
 
       {/* ===================== MODERATION TAB ===================== */}
       <TabsContent value="moderation" className="space-y-6 focus-visible:outline-none">
+        {dataLoading && (
+          <Card className="border-slate-200 shadow-sm">
+            <CardContent className="flex items-center gap-3 p-4 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading administration data...
+            </CardContent>
+          </Card>
+        )}
+        {dataError && (
+          <Card className="border-red-200 bg-red-50 shadow-sm">
+            <CardContent className="p-4 text-sm text-red-700">
+              {dataError.toLowerCase().includes("unauthorized") || dataError.toLowerCase().includes("forbidden")
+                ? "You need an administrator account to load this console."
+                : `Data fetch error: ${dataError}.`}
+            </CardContent>
+          </Card>
+        )}
+
         <Card className="shadow-sm border-slate-200">
           <CardHeader className="bg-slate-50/50 border-b pb-4">
-            <CardTitle className="font-serif">Review Queue ({initialData.pending_articles?.length || 0})</CardTitle>
+            <CardTitle className="font-serif">Review Queue ({adminData.pending_articles?.length || 0})</CardTitle>
             <CardDescription>Posts held by keyword or LLM screening. Approve only content that is academic and appropriate.</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
-            {(!initialData.pending_articles || initialData.pending_articles.length === 0) && (
+            {(!adminData.pending_articles || adminData.pending_articles.length === 0) && (
               <div className="p-6 text-center text-muted-foreground italic">No posts awaiting review.</div>
             )}
             <div className="divide-y divide-slate-100">
-              {(initialData.pending_articles || []).map(article => (
+              {(adminData.pending_articles || []).map(article => (
                 <div key={article.id} className="p-5">
                   <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                     <div className="space-y-2">
@@ -317,13 +386,13 @@ export function AdminDashboardClient({
           {/* Articles */}
           <Card className="shadow-sm border-slate-200">
             <CardHeader className="bg-slate-50/50 border-b pb-4">
-              <CardTitle className="font-serif">Forum Articles ({initialData.articles.length})</CardTitle>
+              <CardTitle className="font-serif">Forum Articles ({adminData.articles.length})</CardTitle>
             </CardHeader>
             <CardContent className="p-0 max-h-[500px] overflow-y-auto">
-              {initialData.articles.length === 0 && <div className="p-6 text-center text-muted-foreground italic">No articles.</div>}
+              {adminData.articles.length === 0 && <div className="p-6 text-center text-muted-foreground italic">No articles.</div>}
               <table className="w-full text-sm text-left">
                 <tbody className="divide-y divide-slate-100">
-                  {initialData.articles.map(article => (
+                  {adminData.articles.map(article => (
                     <tr key={article.id} className="hover:bg-slate-50">
                       <td className="p-4">
                         <p className="font-medium text-slate-900 line-clamp-1">{article.title}</p>
@@ -357,13 +426,13 @@ export function AdminDashboardClient({
           {/* Events & Wiki */}
           <Card className="shadow-sm border-slate-200">
             <CardHeader className="bg-slate-50/50 border-b pb-4">
-              <CardTitle className="font-serif">Events & Wiki ({initialData.events.length + initialData.documents.length})</CardTitle>
+              <CardTitle className="font-serif">Events & Wiki ({adminData.events.length + adminData.documents.length})</CardTitle>
             </CardHeader>
             <CardContent className="p-0 max-h-[500px] overflow-y-auto">
-              {initialData.events.length === 0 && initialData.documents.length === 0 && <div className="p-6 text-center text-muted-foreground italic">No events or wiki docs.</div>}
+              {adminData.events.length === 0 && adminData.documents.length === 0 && <div className="p-6 text-center text-muted-foreground italic">No events or wiki docs.</div>}
               <table className="w-full text-sm text-left">
                 <tbody className="divide-y divide-slate-100">
-                  {initialData.events.map(event => (
+                  {adminData.events.map(event => (
                     <tr key={event.id} className="hover:bg-slate-50">
                       <td className="p-4">
                         <Badge variant="outline" className="text-[10px] mb-1">Event</Badge>
@@ -382,7 +451,7 @@ export function AdminDashboardClient({
                       </td>
                     </tr>
                   ))}
-                  {initialData.documents.map(doc => (
+                  {adminData.documents.map(doc => (
                     <tr key={doc.id} className="hover:bg-slate-50">
                       <td className="p-4">
                         <Badge variant="outline" className="text-[10px] mb-1">Wiki</Badge>
@@ -416,7 +485,7 @@ export function AdminDashboardClient({
             <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-center">
               <div>
                 <p className="text-sm font-medium text-slate-900">
-                  {initialData.active_moderation_keyword_count ?? initialData.moderation_keyword_count ?? 0} active keywords
+                  {adminData.active_moderation_keyword_count ?? adminData.moderation_keyword_count ?? 0} active keywords
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Uploaded files are combined for screening. Blank lines and lines starting with # are ignored.
@@ -459,7 +528,7 @@ export function AdminDashboardClient({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {(initialData.moderation_keyword_lists || []).map((list) => (
+                  {(adminData.moderation_keyword_lists || []).map((list) => (
                     <tr key={list.id} className="hover:bg-slate-50">
                       <td className="px-4 py-3">
                         <p className="font-medium text-slate-900">{list.file_name}</p>
@@ -488,7 +557,7 @@ export function AdminDashboardClient({
                       </td>
                     </tr>
                   ))}
-                  {(!initialData.moderation_keyword_lists || initialData.moderation_keyword_lists.length === 0) && (
+                  {(!adminData.moderation_keyword_lists || adminData.moderation_keyword_lists.length === 0) && (
                     <tr>
                       <td className="p-6 text-center text-muted-foreground italic" colSpan={4}>No keyword files uploaded.</td>
                     </tr>
@@ -555,11 +624,11 @@ export function AdminDashboardClient({
                   setLlmApiKey(e.target.value)
                   if (e.target.value) setLlmClearApiKey(false)
                 }}
-                placeholder={initialData.moderation_llm_settings?.api_key_hint || "Paste a new key to update"}
+                placeholder={adminData.moderation_llm_settings?.api_key_hint || "Paste a new key to update"}
               />
               <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                <Badge variant={initialData.moderation_llm_settings?.api_key_configured ? "secondary" : "outline"}>
-                  {initialData.moderation_llm_settings?.api_key_configured ? `Configured ${initialData.moderation_llm_settings?.api_key_hint || ""}` : "No key configured"}
+                <Badge variant={adminData.moderation_llm_settings?.api_key_configured ? "secondary" : "outline"}>
+                  {adminData.moderation_llm_settings?.api_key_configured ? `Configured ${adminData.moderation_llm_settings?.api_key_hint || ""}` : "No key configured"}
                 </Badge>
                 <label className="flex items-center gap-2">
                   <input
@@ -630,17 +699,17 @@ export function AdminDashboardClient({
       <TabsContent value="users" className="space-y-6 focus-visible:outline-none">
         <Card className="shadow-sm border-slate-200">
           <CardHeader>
-            <CardTitle className="font-serif">User Directory ({initialData.users.length})</CardTitle>
+            <CardTitle className="font-serif">User Directory ({adminData.users.length})</CardTitle>
             <CardDescription>Manage platform members. Deleting a user removes their profile permanently.</CardDescription>
           </CardHeader>
           <CardContent>
-            {initialData.users.length === 0 && (
+            {adminData.users.length === 0 && (
               <div className="p-8 text-center text-muted-foreground italic border-2 border-dashed rounded-xl">
                 <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-30" />
                 No users loaded. Ensure the admin SQL functions have been created.
               </div>
             )}
-            {initialData.users.length > 0 && (
+            {adminData.users.length > 0 && (
               <div className="rounded-xl border border-slate-200 overflow-hidden">
                 <table className="w-full text-sm text-left">
                   <thead className="bg-slate-50 text-slate-600 font-medium">
@@ -652,7 +721,7 @@ export function AdminDashboardClient({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {initialData.users.map(user => (
+                    {adminData.users.map(user => (
                       <tr key={user.id} className="hover:bg-slate-50">
                         <td className="px-6 py-4">
                           <p className="font-semibold text-slate-900">{user.display_name || "Unknown"}</p>
@@ -749,10 +818,10 @@ export function AdminDashboardClient({
           </CardHeader>
           <CardContent className="p-0 max-h-[600px] overflow-y-auto">
             <div className="divide-y divide-slate-100">
-              {initialData.announcements.length === 0 && (
+              {adminData.announcements.length === 0 && (
                 <div className="p-8 text-center text-muted-foreground italic">No announcements broadcasted yet.</div>
               )}
-              {initialData.announcements.map(ann => (
+              {adminData.announcements.map(ann => (
                 <div key={ann.id} className="p-6">
                   <div className="flex justify-between items-start mb-2">
                     <h3 className="font-bold text-slate-900">{ann.title}</h3>

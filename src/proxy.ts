@@ -37,7 +37,7 @@ export async function proxy(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname
 
-  const protectedPaths = ['/profile', '/admin', '/wiki/new', '/forum/new', '/events/new']
+  const protectedPaths = ['/profile', '/wiki/new', '/forum/new', '/events/new']
   const isProtectedPath = protectedPaths.some(path => pathname.startsWith(path))
 
   if (!user && isProtectedPath) {
@@ -51,25 +51,9 @@ export async function proxy(request: NextRequest) {
     return redirectResponse
   }
 
-  if (user && pathname.startsWith('/admin')) {
-    const { data: profile } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (profile?.role !== 'admin') {
-      const redirectHome = NextResponse.redirect(new URL('/', request.url))
-      supabaseResponse.cookies.getAll().forEach((cookie) => {
-        redirectHome.cookies.set(cookie.name, cookie.value)
-      })
-      return redirectHome
-    }
-  }
-
   return supabaseResponse
 }
 
 export const config = {
-  matcher: ['/profile/:path*', '/admin/:path*', '/wiki/new', '/forum/new', '/events/new'],
+  matcher: ['/profile/:path*', '/wiki/new', '/forum/new', '/events/new'],
 }
