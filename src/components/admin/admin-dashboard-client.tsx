@@ -48,6 +48,7 @@ interface AdminArticle {
 }
 
 interface PendingArticle extends AdminArticle {
+  status?: "pending" | "approved" | "rejected" | string
   abstract?: string | null
   moderation_reason?: string | null
   moderation_score?: number | string | null
@@ -180,12 +181,14 @@ export function AdminDashboardClient({
     setLoading(id)
     try {
       await action()
+      await loadAdminData()
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Unknown error"
       alert("Error: " + message)
+    } finally {
+      setLoading(null)
+      setConfirmDelete(null)
     }
-    setLoading(null)
-    setConfirmDelete(null)
   }
 
   const handleKeywordDownload = () => {
@@ -342,6 +345,9 @@ export function AdminDashboardClient({
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="font-semibold text-slate-900">{article.title}</h3>
+                        <Badge variant={article.status === "rejected" ? "destructive" : "secondary"}>
+                          {article.status === "rejected" ? "Rejected" : "Pending"}
+                        </Badge>
                         <Badge variant="secondary">{article.moderation_source || "manual"}</Badge>
                         {article.moderation_score !== null && article.moderation_score !== undefined && (
                           <Badge variant="outline">score {Number(article.moderation_score).toFixed(2)}</Badge>
@@ -369,10 +375,11 @@ export function AdminDashboardClient({
                       <Button
                         size="sm"
                         variant="destructive"
+                        disabled={loading === `reject-${article.id}`}
                         onClick={() => wrapAction(`reject-${article.id}`, () => reviewArticle(article.id, "rejected", "Rejected by admin"))}
                       >
                         {loading === `reject-${article.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="mr-1.5 h-4 w-4" />}
-                        Reject
+                        {article.status === "rejected" ? "Confirm Reject" : "Reject"}
                       </Button>
                     </div>
                   </div>
