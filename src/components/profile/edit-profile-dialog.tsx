@@ -13,7 +13,6 @@ import "react-image-crop/dist/ReactCrop.css"
 import { supabase } from "@/lib/supabase"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Switch } from "@/components/ui/switch"
-import { useToast } from "@/components/ui/toast"
 export function EditProfileDialog({
   profile,
   onProfileUpdate,
@@ -26,7 +25,6 @@ export function EditProfileDialog({
   returnTo?: string | null
 }) {
   const router = useRouter()
-  const { toast } = useToast()
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [displayName, setDisplayName] = useState(profile?.display_name || "")
@@ -135,11 +133,7 @@ export function EditProfileDialog({
           avatarUrl = publicUrl
         } else {
           console.error("Upload error:", uploadError)
-          toast({
-            variant: "error",
-            title: "Avatar upload failed",
-            description: uploadError.message,
-          })
+          alert("Failed to upload avatar.")
         }
       }
     }
@@ -159,11 +153,7 @@ export function EditProfileDialog({
       .eq("id", session.user.id)
 
     if (error) {
-      toast({
-        variant: "error",
-        title: "Failed to save profile",
-        description: error.message,
-      })
+      alert("Error saving profile: " + error.message)
     } else {
       onProfileUpdate({ ...profile, ...updates })
       setOpen(false)

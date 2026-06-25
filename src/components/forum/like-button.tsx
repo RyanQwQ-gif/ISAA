@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button"
 import { ThumbsUp } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
-import { useToast } from "@/components/ui/toast"
 
 interface LikeButtonProps {
   articleId?: string
@@ -17,7 +16,6 @@ export function LikeButton({ articleId, eventId, initialCount }: LikeButtonProps
   const [likes, setLikes] = useState(initialCount)
   const [isLiked, setIsLiked] = useState(false)
   const [loading, setLoading] = useState(false)
-  const { toast } = useToast()
 
   useEffect(() => {
     checkIfLiked()
@@ -42,11 +40,7 @@ export function LikeButton({ articleId, eventId, initialCount }: LikeButtonProps
   const handleLike = async () => {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) {
-      toast({
-        variant: "warning",
-        title: "Sign in required",
-        description: "Please log in to like this post.",
-      })
+      alert("Please login to like")
       return
     }
 

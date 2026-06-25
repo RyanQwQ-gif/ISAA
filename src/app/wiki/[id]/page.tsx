@@ -25,13 +25,6 @@ import remarkMath from "remark-math"
 import rehypeKatex from "rehype-katex"
 import { formatDistanceToNow } from "date-fns"
 import dynamic from "next/dynamic"
-<<<<<<< HEAD
-=======
-import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
-import { isMissingColumnError } from "@/lib/supabase-errors"
-import { useToast } from "@/components/ui/toast"
->>>>>>> a8c2bed767d5bd6d14a6223ec8b3ec089683bd81
 
 const MDEditor = dynamic(() => import("@uiw/react-md-editor"), { ssr: false })
 
@@ -53,7 +46,6 @@ interface DocumentRecord {
 
 export default function DocumentPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   const params = use(paramsPromise)
-  const { toast } = useToast()
   const [doc, setDoc] = useState<DocumentRecord | null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [title, setTitle] = useState("")
@@ -116,20 +108,12 @@ export default function DocumentPage({ params: paramsPromise }: { params: Promis
 
   const handleUpdate = async () => {
     if (!canEdit) {
-      toast({
-        variant: "error",
-        title: "Permission denied",
-        description: "You do not have permission to edit this document.",
-      })
+      alert("You do not have permission to edit this document.")
       return
     }
     const sessionUserId = session?.user?.id
     if (!sessionUserId) {
-      toast({
-        variant: "error",
-        title: "Sign in required",
-        description: "You must be logged in to edit this document.",
-      })
+      alert("You must be logged in to edit this document.")
       return
     }
     setSaving(true)
@@ -142,53 +126,13 @@ export default function DocumentPage({ params: paramsPromise }: { params: Promis
         updated_at: new Date().toISOString(),
       })
       .eq("id", params.id)
-<<<<<<< HEAD
       .eq("creator_id", sessionUserId)
-=======
-
-    if (isCreator) {
-      query = query.eq("creator_id", sessionUserId)
-    } else {
-      query = query.eq("allow_public_edit", true)
-    }
-
-    let { error } = await query
-
-    if (error && isCreator && isMissingColumnError(error, "allow_public_edit")) {
-      if (allowPublicEdit) {
-        toast({
-          variant: "warning",
-          title: "Migration required",
-          description: "Public editing needs the latest database migration. Apply supabase/migrations/20260423_fix_event_registration_and_wiki_permissions.sql first.",
-        })
-        setSaving(false)
-        return
-      }
-
-      const fallbackResult = await supabase
-        .from("documents")
-        .update(basePayload)
-        .eq("id", params.id)
-        .eq("creator_id", sessionUserId)
-
-      error = fallbackResult.error
-    }
->>>>>>> a8c2bed767d5bd6d14a6223ec8b3ec089683bd81
 
     if (!error) {
       await fetchDocument()
       setIsEditing(false)
-      toast({
-        variant: "success",
-        title: "Document saved",
-        description: "Your changes are live.",
-      })
     } else {
-      toast({
-        variant: "error",
-        title: "Failed to save",
-        description: error.message,
-      })
+      alert("Failed to save: " + error.message)
     }
     setSaving(false)
   }

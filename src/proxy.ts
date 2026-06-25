@@ -55,11 +55,7 @@ export async function proxy(request: NextRequest) {
     return redirectResponse
   }
 
-<<<<<<< HEAD
   return response
-=======
-  return supabaseResponse
->>>>>>> a8c2bed767d5bd6d14a6223ec8b3ec089683bd81
 }
 
 export const config = {

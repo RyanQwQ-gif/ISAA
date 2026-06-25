@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button"
 import { Loader2, Trash2, Edit, FileText, Calendar, BookOpen, ExternalLink, Users } from "lucide-react"
 import Link from "next/link"
 import { format } from "date-fns"
-import { useToast } from "@/components/ui/toast"
 
 interface ContentItem {
   id: string
@@ -34,7 +33,6 @@ export function MyContentTabs({ userId }: { userId?: string }) {
   const [docs, setDocs] = useState<ContentItem[]>([])
   const [loading, setLoading] = useState(true)
   const isOwner = Boolean(session?.user?.id && userId && session.user.id === userId)
-  const { toast } = useToast()
 
   useEffect(() => {
     if (!userId) return
@@ -140,11 +138,7 @@ export function MyContentTabs({ userId }: { userId?: string }) {
     // but explicit check in API is required by the epic.
     const { data: { session } } = await supabase.auth.getSession()
     if (!session || session.user.id !== userId) {
-      toast({
-        variant: "error",
-        title: "Unauthorized",
-        description: "You can't delete this post.",
-      })
+      alert("Unauthorized deletion attempt.")
       return
     }
 
@@ -157,11 +151,7 @@ export function MyContentTabs({ userId }: { userId?: string }) {
 
     const ownerId = verifyData?.[authorColumn as keyof typeof verifyData]
     if (!verifyData || ownerId !== session.user.id) {
-      toast({
-        variant: "error",
-        title: "Permission denied",
-        description: "You do not have permission to delete this post.",
-      })
+      alert("You do not have permission to delete this post.")
       return
     }
 
@@ -171,11 +161,7 @@ export function MyContentTabs({ userId }: { userId?: string }) {
       .eq(idColumn, id)
 
     if (error) {
-      toast({
-        variant: "error",
-        title: "Failed to delete",
-        description: error.message,
-      })
+      alert("Failed to delete: " + error.message)
     } else {
       // Re-fetch or locally remove from state
       if (type === "article") setArticles((prev) => prev.filter((item) => item.id !== id))

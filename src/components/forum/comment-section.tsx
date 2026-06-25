@@ -7,7 +7,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { formatDistanceToNow } from "date-fns"
 import { MessageSquare, Send, Reply, Loader2 } from "lucide-react"
-import { useToast } from "@/components/ui/toast"
 
 interface Comment {
   id: string
@@ -33,7 +32,6 @@ export function CommentSection({ articleId, eventId }: CommentSectionProps) {
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(true)
   const [replyTo, setReplyTo] = useState<string | null>(null)
-  const { toast } = useToast()
 
   useEffect(() => {
     fetchComments()
@@ -62,11 +60,7 @@ export function CommentSection({ articleId, eventId }: CommentSectionProps) {
 
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) {
-      toast({
-        variant: "warning",
-        title: "Sign in required",
-        description: "Please log in to comment.",
-      })
+      alert("Please login to comment")
       setLoading(false)
       return
     }
@@ -82,11 +76,7 @@ export function CommentSection({ articleId, eventId }: CommentSectionProps) {
       })
 
     if (error) {
-      toast({
-        variant: "error",
-        title: "Unable to post comment",
-        description: error.message,
-      })
+      alert(error.message)
     } else {
       setNewComment("")
       setReplyTo(null)

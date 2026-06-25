@@ -35,7 +35,6 @@ export default async function ArticleDetailPage({ params: paramsPromise }: { par
       comments_count:comments(count)
     `)
     .eq("id", params.id)
-    .eq("status", "approved")
     .single()
 
   if (!article) {

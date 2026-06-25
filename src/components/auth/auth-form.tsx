@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Chrome, Github, GraduationCap, Loader2 } from "lucide-react"
+import { GraduationCap, Loader2 } from "lucide-react"
 import Link from "next/link"
 
 interface AuthFormProps {
@@ -20,23 +20,15 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [loading, setLoading] = useState(false)
-  const [oauthLoading, setOauthLoading] = useState<"google" | "github" | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-<<<<<<< HEAD
   const [acceptedTerms, setAcceptedTerms] = useState(false)
   const [acceptedCrossBorderTransfer, setAcceptedCrossBorderTransfer] = useState(false)
-=======
->>>>>>> a8c2bed767d5bd6d14a6223ec8b3ec089683bd81
   const router = useRouter()
   const searchParams = useSearchParams()
   const next = sanitizeNext(searchParams.get("next"))
   const nextQuery = next === "/" ? "" : `?next=${encodeURIComponent(next)}`
-<<<<<<< HEAD
   const isBusy = loading
-=======
-  const isBusy = loading || oauthLoading !== null
->>>>>>> a8c2bed767d5bd6d14a6223ec8b3ec089683bd81
 
   const getCallbackUrl = () => {
     const callbackUrl = new URL("/auth/callback", window.location.origin)
@@ -51,15 +43,12 @@ export function AuthForm({ mode }: AuthFormProps) {
     setLoading(true)
     setError(null)
     setNotice(null)
-<<<<<<< HEAD
 
     if (!acceptedTerms || !acceptedCrossBorderTransfer) {
       setError("Please accept the Terms of Service, Privacy Policy, and Cross-Border Transfer Notice before continuing.")
       setLoading(false)
       return
     }
-=======
->>>>>>> a8c2bed767d5bd6d14a6223ec8b3ec089683bd81
 
     if (mode === "signup" && password !== confirmPassword) {
       setError("Passwords do not match!")
@@ -96,31 +85,6 @@ export function AuthForm({ mode }: AuthFormProps) {
     }
   }
 
-  const handleOAuth = async (provider: "google" | "github") => {
-    setOauthLoading(provider)
-    setError(null)
-    setNotice(null)
-
-    const options =
-      provider === "google"
-        ? {
-            redirectTo: getCallbackUrl(),
-            queryParams: { prompt: "select_account" },
-          }
-        : { redirectTo: getCallbackUrl() }
-
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options,
-      })
-      if (error) throw error
-    } catch (err: unknown) {
-      setError(getErrorMessage(err))
-      setOauthLoading(null)
-    }
-  }
-
   return (
     <Card className="w-full max-w-md shadow-lg border-slate-200">
       <CardHeader className="space-y-1 text-center">
@@ -148,47 +112,6 @@ export function AuthForm({ mode }: AuthFormProps) {
               {notice}
             </div>
           )}
-<<<<<<< HEAD
-=======
-          <div className="grid grid-cols-2 gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11"
-              disabled={isBusy}
-              onClick={() => handleOAuth("google")}
-            >
-              {oauthLoading === "google" ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Chrome className="mr-2 h-4 w-4" />
-              )}
-              Google
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11"
-              disabled={isBusy}
-              onClick={() => handleOAuth("github")}
-            >
-              {oauthLoading === "github" ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Github className="mr-2 h-4 w-4" />
-              )}
-              GitHub
-            </Button>
-          </div>
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t border-slate-200" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white px-2 text-muted-foreground">or use email</span>
-            </div>
-          </div>
->>>>>>> a8c2bed767d5bd6d14a6223ec8b3ec089683bd81
           <div className="space-y-2">
             <Label htmlFor="email">Email address</Label>
             <Input 

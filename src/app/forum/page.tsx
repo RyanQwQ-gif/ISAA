@@ -31,9 +31,7 @@ export default async function ForumPage() {
       likes_count:likes(count),
       comments_count:comments(count)
     `)
-    .eq("status", "approved")
-    .order("is_pinned", { ascending: false })
-    .order("published_at", { ascending: false })
+    .order("created_at", { ascending: false })
 
   return <ForumPageClient initialArticles={(data as unknown as ForumArticleCard[]) || []} />
 }
