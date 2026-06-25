@@ -14,6 +14,8 @@ import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"
 import rehypeKatex from "rehype-katex"
 import { TagInput } from "@/components/ui/tag-input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { isMissingColumnError } from "@/lib/supabase-errors"
 
 const MDEditor = dynamic(() => import("@uiw/react-md-editor"), { ssr: false })
 
@@ -25,6 +27,7 @@ export default function NewWikiDocumentPage() {
   const [uploading, setUploading] = useState(false)
   const [subjectTags, setSubjectTags] = useState<string[]>([])
   const [schoolTags, setSchoolTags] = useState<string[]>([])
+  const [allowPublicEdit, setAllowPublicEdit] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -65,19 +68,47 @@ export default function NewWikiDocumentPage() {
       setUploading(false)
     }
 
-    const { data, error: insertError } = await supabase
+    const insertPayload = {
+      title,
+      description: description || null,
+      content,
+      creator_id: session.user.id,
+      file_url: fileUrl,
+      subject_tags: subjectTags,
+      school_tags: schoolTags,
+      allow_public_edit: allowPublicEdit,
+    }
+
+    let { data, error: insertError } = await supabase
       .from("documents")
-      .insert({
-        title,
-        description: description || null,
-        content,
-        creator_id: session.user.id,
-        file_url: fileUrl,
-        subject_tags: subjectTags,
-        school_tags: schoolTags,
-      })
+      .insert(insertPayload)
       .select()
       .single()
+
+    if (insertError && isMissingColumnError(insertError, "allow_public_edit")) {
+      if (allowPublicEdit) {
+        setError("Public editing needs the latest database migration. Apply supabase/migrations/20260423_fix_event_registration_and_wiki_permissions.sql first.")
+        setLoading(false)
+        return
+      }
+
+      const fallbackResult = await supabase
+        .from("documents")
+        .insert({
+          title,
+          description: description || null,
+          content,
+          creator_id: session.user.id,
+          file_url: fileUrl,
+          subject_tags: subjectTags,
+          school_tags: schoolTags,
+        })
+        .select()
+        .single()
+
+      data = fallbackResult.data
+      insertError = fallbackResult.error
+    }
 
     if (insertError) {
       setError(insertError.message)
@@ -199,6 +230,35 @@ export default function NewWikiDocumentPage() {
                   onTagsChange={setSchoolTags}
                   suggestions={["HFI", "NCPA", "ULC", "BSG", "AISG", "ISB", "SAS", "HKIS"]}
                 />
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm border-slate-200">
+              <CardHeader>
+                <CardTitle className="font-serif">Collaboration Settings</CardTitle>
+                <CardDescription>Choose whether other signed-in users can edit this wiki.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <Label htmlFor="collaboration-mode">Access Mode</Label>
+                  <Select
+                    value={allowPublicEdit ? "public-edit" : "view-only"}
+                    onValueChange={(value) => setAllowPublicEdit(value === "public-edit")}
+                  >
+                    <SelectTrigger id="collaboration-mode" className="h-12">
+                      <SelectValue placeholder="Select collaboration mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="view-only">Public view only</SelectItem>
+                      <SelectItem value="public-edit">Public edit</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-muted-foreground">
+                    {allowPublicEdit
+                      ? "Anyone who is signed in can update this wiki."
+                      : "Only you can edit this wiki after publishing."}
+                  </p>
+                </div>
               </CardContent>
             </Card>
 

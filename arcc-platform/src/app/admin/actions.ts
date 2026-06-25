@@ -101,6 +101,61 @@ export async function toggleAnnouncement(id: string, isActive: boolean) {
   revalidatePath("/")
 }
 
+export async function reviewArticle(id: string, status: "approved" | "rejected" | "pending", note?: string) {
+  const supabase = await getAdminSupabase()
+
+  const { error } = await supabase
+    .rpc("admin_review_article", { target_article_id: id, new_status: status, note: note || null })
+
+  if (error) throw new Error(error.message)
+  revalidatePath("/admin")
+  revalidatePath("/forum")
+}
+
+export async function setArticlePinned(id: string, pinned: boolean) {
+  const supabase = await getAdminSupabase()
+
+  const { error } = await supabase
+    .rpc("admin_set_article_pinned", { target_article_id: id, pinned })
+
+  if (error) throw new Error(error.message)
+  revalidatePath("/admin")
+  revalidatePath("/forum")
+}
+
+export async function setUserRole(userId: string, role: "user" | "admin") {
+  const supabase = await getAdminSupabase()
+
+  const { error } = await supabase
+    .rpc("admin_set_user_role", { target_user_id: userId, new_role: role })
+
+  if (error) throw new Error(error.message)
+  revalidatePath("/admin")
+}
+
+export async function updateModerationLlmSettings(settings: {
+  enabled: boolean
+  baseUrl: string
+  apiKey?: string
+  clearApiKey?: boolean
+  model: string
+  prompt: string
+}) {
+  const supabase = await getAdminSupabase()
+
+  const { error } = await supabase.rpc("admin_update_moderation_llm_settings", {
+    p_enabled: settings.enabled,
+    p_base_url: settings.baseUrl,
+    p_api_key: settings.apiKey?.trim() || null,
+    p_clear_api_key: Boolean(settings.clearApiKey),
+    p_model: settings.model,
+    p_prompt: settings.prompt,
+  })
+
+  if (error) throw new Error(error.message)
+  revalidatePath("/admin")
+}
+
 // 8. Fetch all admin data (bypasses RLS via SECURITY DEFINER)
 export async function fetchAdminData() {
   const supabase = await getAdminSupabase()

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -8,42 +8,286 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { format } from "date-fns"
-import { Trash2, UserX, Plus, Megaphone, Loader2, AlertTriangle } from "lucide-react"
+import { Trash2, UserX, Megaphone, Loader2, AlertTriangle, CheckCircle2, XCircle, Pin, Shield, Download, Upload, Bot } from "lucide-react"
 import {
   deleteUserActivity,
   deleteUser,
   createAnnouncement,
   deleteAnnouncement,
   toggleAnnouncement,
+  reviewArticle,
+  setArticlePinned,
+  setUserRole,
+  updateModerationLlmSettings,
+  fetchAdminData,
 } from "@/app/admin/actions"
 
 interface AdminData {
-  articles: any[]
-  events: any[]
-  documents: any[]
-  users: any[]
-  tags: any[]
-  announcements: any[]
+  articles: AdminArticle[]
+  pending_articles: PendingArticle[]
+  events: AdminEvent[]
+  documents: AdminDocument[]
+  users: AdminUser[]
+  tags: unknown[]
+  announcements: Announcement[]
+  moderation_keyword_lists?: ModerationKeywordList[]
+  moderation_keyword_count?: number
+  active_moderation_keyword_count?: number
+  moderation_llm_settings?: ModerationLlmSettings
+  reports: unknown[]
 }
 
-export function AdminDashboardClient({ initialData }: { initialData: AdminData }) {
+interface AdminArticle {
+  id: string
+  title: string
+  created_at: string
+  is_pinned?: boolean
+  author?: { display_name?: string | null } | null
+}
+
+interface PendingArticle extends AdminArticle {
+  status?: "pending" | "approved" | "rejected" | string
+  abstract?: string | null
+  moderation_reason?: string | null
+  moderation_score?: number | string | null
+  moderation_source?: string | null
+  author?: { display_name?: string | null; school?: string | null } | null
+}
+
+interface AdminEvent {
+  id: string
+  title: string
+  organizer?: { display_name?: string | null } | null
+}
+
+interface AdminDocument {
+  id: string
+  title: string
+  creator?: { display_name?: string | null } | null
+}
+
+interface AdminUser {
+  id: string
+  display_name?: string | null
+  school?: string | null
+  role?: "user" | "admin" | string
+}
+
+interface Announcement {
+  id: string
+  title: string
+  content: string
+  is_active: boolean
+  created_at: string
+}
+
+interface ModerationKeywordList {
+  id: string
+  file_name: string
+  keyword_count: number
+  created_at: string
+  created_by?: { display_name?: string | null } | null
+}
+
+interface ModerationLlmSettings {
+  enabled?: boolean
+  base_url?: string
+  model?: string
+  prompt?: string
+  api_key_configured?: boolean
+  api_key_hint?: string | null
+  updated_at?: string | null
+}
+
+const DEFAULT_LLM_PROMPT =
+  "You are an academic discussion platform moderation system. Review every submitted post. Return only JSON with status approved, pending, or rejected; reason; and score from 0 to 1. Reject spam, advertising, abuse, harassment, sexual content, doxxing, threats, plagiarism requests, and obvious non-academic junk. Use pending for uncertain cases, sensitive topics, low-quality but salvageable posts, or posts requiring human context. Approve legitimate academic discussion, research proposals, event recaps, questions, and peer feedback. Be fair to non-native speakers and students making genuine academic contributions."
+
+const EMPTY_ADMIN_DATA: AdminData = {
+  articles: [],
+  pending_articles: [],
+  events: [],
+  documents: [],
+  users: [],
+  tags: [],
+  announcements: [],
+  moderation_keyword_lists: [],
+  moderation_keyword_count: 0,
+  active_moderation_keyword_count: 0,
+  moderation_llm_settings: {
+    enabled: false,
+    base_url: "https://api.openai.com/v1/responses",
+    model: "gpt-4.1-mini",
+    prompt: DEFAULT_LLM_PROMPT,
+    api_key_configured: false,
+    api_key_hint: null,
+    updated_at: null,
+  },
+  reports: [],
+}
+
+export function AdminDashboardClient({
+  initialData,
+  hasServiceRoleKey,
+}: {
+  initialData?: AdminData
+  hasServiceRoleKey: boolean
+}) {
+  const [adminData, setAdminData] = useState<AdminData>(initialData || EMPTY_ADMIN_DATA)
+  const [dataLoading, setDataLoading] = useState(!initialData)
+  const [dataError, setDataError] = useState<string | null>(null)
   const [loading, setLoading] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [keywordImportResult, setKeywordImportResult] = useState<string | null>(null)
+  const [llmTestResult, setLlmTestResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const keywordFileRef = useRef<HTMLInputElement>(null)
 
   // Announcement State
   const [annTitle, setAnnTitle] = useState("")
   const [annContent, setAnnContent] = useState("")
+  const [llmEnabled, setLlmEnabled] = useState(Boolean(adminData.moderation_llm_settings?.enabled))
+  const [llmBaseUrl, setLlmBaseUrl] = useState(adminData.moderation_llm_settings?.base_url || "https://api.openai.com/v1/responses")
+  const [llmApiKey, setLlmApiKey] = useState("")
+  const [llmClearApiKey, setLlmClearApiKey] = useState(false)
+  const [llmModel, setLlmModel] = useState(adminData.moderation_llm_settings?.model || "gpt-4.1-mini")
+  const [llmPrompt, setLlmPrompt] = useState(adminData.moderation_llm_settings?.prompt || DEFAULT_LLM_PROMPT)
+
+  const loadAdminData = useCallback(async () => {
+    setDataLoading(true)
+    setDataError(null)
+
+    try {
+      const data = await fetchAdminData()
+      const nextData = (data as AdminData) || EMPTY_ADMIN_DATA
+      setAdminData(nextData)
+      setLlmEnabled(Boolean(nextData.moderation_llm_settings?.enabled))
+      setLlmBaseUrl(nextData.moderation_llm_settings?.base_url || "https://api.openai.com/v1/responses")
+      setLlmModel(nextData.moderation_llm_settings?.model || "gpt-4.1-mini")
+      setLlmPrompt(nextData.moderation_llm_settings?.prompt || DEFAULT_LLM_PROMPT)
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Unknown error"
+      setDataError(message)
+    } finally {
+      setDataLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadAdminData()
+  }, [loadAdminData])
 
   const wrapAction = async (id: string, action: () => Promise<void>) => {
     setLoading(id)
     try {
       await action()
-    } catch (e: any) {
-      alert("Error: " + e.message)
+      await loadAdminData()
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Unknown error"
+      alert("Error: " + message)
+    } finally {
+      setLoading(null)
+      setConfirmDelete(null)
     }
-    setLoading(null)
-    setConfirmDelete(null)
+  }
+
+  const handleKeywordDownload = () => {
+    window.location.href = "/api/admin/moderation-keywords"
+  }
+
+  const handleKeywordListDownload = (listId: string) => {
+    window.location.href = `/api/admin/moderation-keywords?listId=${encodeURIComponent(listId)}`
+  }
+
+  const handleKeywordUpload = async () => {
+    const file = keywordFileRef.current?.files?.[0]
+    if (!file) {
+      alert("Please choose a .txt file first.")
+      return
+    }
+
+    const formData = new FormData()
+    formData.append("file", file)
+    setLoading("upload-keywords")
+    setKeywordImportResult(null)
+
+    try {
+      const response = await fetch("/api/admin/moderation-keywords", {
+        method: "POST",
+        body: formData,
+      })
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to import keywords.")
+      }
+
+      setKeywordImportResult(`Imported ${result.imported} keywords.`)
+      await loadAdminData()
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Unknown error"
+      alert("Error: " + message)
+    } finally {
+      setLoading(null)
+    }
+  }
+
+  const handleKeywordListDelete = async (listId: string) => {
+    setLoading(`delete-keyword-list-${listId}`)
+
+    try {
+      const response = await fetch(`/api/admin/moderation-keywords?listId=${encodeURIComponent(listId)}`, {
+        method: "DELETE",
+      })
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to delete keyword file.")
+      }
+
+      await loadAdminData()
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Unknown error"
+      alert("Error: " + message)
+    } finally {
+      setLoading(null)
+      setConfirmDelete(null)
+    }
+  }
+
+  const handleLlmTest = async () => {
+    setLoading("test-llm-settings")
+    setLlmTestResult(null)
+
+    try {
+      const response = await fetch("/api/admin/moderation-llm/test", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          baseUrl: llmBaseUrl,
+          apiKey: llmApiKey,
+          model: llmModel,
+          prompt: llmPrompt,
+        }),
+      })
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || "LLM test failed.")
+      }
+
+      setLlmTestResult({
+        ok: true,
+        message: `Connected using the current unsaved form values. Test result: ${result.status}${typeof result.score === "number" ? ` (${Number(result.score).toFixed(2)})` : ""}.`,
+      })
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Unknown error"
+      setLlmTestResult({ ok: false, message })
+    } finally {
+      setLoading(null)
+    }
   }
 
   // Confirmation wrapper - first click shows confirm, second click executes
@@ -67,23 +311,109 @@ export function AdminDashboardClient({ initialData }: { initialData: AdminData }
 
       {/* ===================== MODERATION TAB ===================== */}
       <TabsContent value="moderation" className="space-y-6 focus-visible:outline-none">
+        {dataLoading && (
+          <Card className="border-slate-200 shadow-sm">
+            <CardContent className="flex items-center gap-3 p-4 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading administration data...
+            </CardContent>
+          </Card>
+        )}
+        {dataError && (
+          <Card className="border-red-200 bg-red-50 shadow-sm">
+            <CardContent className="p-4 text-sm text-red-700">
+              {dataError.toLowerCase().includes("unauthorized") || dataError.toLowerCase().includes("forbidden")
+                ? "You need an administrator account to load this console."
+                : `Data fetch error: ${dataError}.`}
+            </CardContent>
+          </Card>
+        )}
+
+        <Card className="shadow-sm border-slate-200">
+          <CardHeader className="bg-slate-50/50 border-b pb-4">
+            <CardTitle className="font-serif">Review Queue ({adminData.pending_articles?.length || 0})</CardTitle>
+            <CardDescription>Posts held by keyword or LLM screening. Approve only content that is academic and appropriate.</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            {(!adminData.pending_articles || adminData.pending_articles.length === 0) && (
+              <div className="p-6 text-center text-muted-foreground italic">No posts awaiting review.</div>
+            )}
+            <div className="divide-y divide-slate-100">
+              {(adminData.pending_articles || []).map(article => (
+                <div key={article.id} className="p-5">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-semibold text-slate-900">{article.title}</h3>
+                        <Badge variant={article.status === "rejected" ? "destructive" : "secondary"}>
+                          {article.status === "rejected" ? "Rejected" : "Pending"}
+                        </Badge>
+                        <Badge variant="secondary">{article.moderation_source || "manual"}</Badge>
+                        {article.moderation_score !== null && article.moderation_score !== undefined && (
+                          <Badge variant="outline">score {Number(article.moderation_score).toFixed(2)}</Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground line-clamp-2">{article.abstract || "No abstract."}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {article.author?.display_name || "Unknown"} · {article.author?.school || "School not provided"} · {format(new Date(article.created_at), "MMM d, yyyy")}
+                      </p>
+                      {article.moderation_reason && (
+                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-md px-2 py-1 inline-block">
+                          {article.moderation_reason}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => wrapAction(`approve-${article.id}`, () => reviewArticle(article.id, "approved", "Approved by admin"))}
+                      >
+                        {loading === `approve-${article.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-4 w-4" />}
+                        Approve
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={loading === `reject-${article.id}`}
+                        onClick={() => wrapAction(`reject-${article.id}`, () => reviewArticle(article.id, "rejected", "Rejected by admin"))}
+                      >
+                        {loading === `reject-${article.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="mr-1.5 h-4 w-4" />}
+                        {article.status === "rejected" ? "Confirm Reject" : "Reject"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Articles */}
           <Card className="shadow-sm border-slate-200">
             <CardHeader className="bg-slate-50/50 border-b pb-4">
-              <CardTitle className="font-serif">Forum Articles ({initialData.articles.length})</CardTitle>
+              <CardTitle className="font-serif">Forum Articles ({adminData.articles.length})</CardTitle>
             </CardHeader>
             <CardContent className="p-0 max-h-[500px] overflow-y-auto">
-              {initialData.articles.length === 0 && <div className="p-6 text-center text-muted-foreground italic">No articles.</div>}
+              {adminData.articles.length === 0 && <div className="p-6 text-center text-muted-foreground italic">No articles.</div>}
               <table className="w-full text-sm text-left">
                 <tbody className="divide-y divide-slate-100">
-                  {initialData.articles.map(article => (
+                  {adminData.articles.map(article => (
                     <tr key={article.id} className="hover:bg-slate-50">
                       <td className="p-4">
                         <p className="font-medium text-slate-900 line-clamp-1">{article.title}</p>
                         <p className="text-xs text-muted-foreground">{article.author?.display_name || "Unknown"}</p>
                       </td>
                       <td className="p-4 text-right align-middle">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => wrapAction(`pin-art-${article.id}`, () => setArticlePinned(article.id, !article.is_pinned))}
+                          className="h-8 px-2 text-slate-500 hover:text-primary"
+                        >
+                          {loading === `pin-art-${article.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pin className="h-4 w-4" />}
+                        </Button>
                         <Button 
                           variant={confirmDelete === `del-art-${article.id}` ? "destructive" : "ghost"} 
                           size="sm" 
@@ -103,13 +433,13 @@ export function AdminDashboardClient({ initialData }: { initialData: AdminData }
           {/* Events & Wiki */}
           <Card className="shadow-sm border-slate-200">
             <CardHeader className="bg-slate-50/50 border-b pb-4">
-              <CardTitle className="font-serif">Events & Wiki ({initialData.events.length + initialData.documents.length})</CardTitle>
+              <CardTitle className="font-serif">Events & Wiki ({adminData.events.length + adminData.documents.length})</CardTitle>
             </CardHeader>
             <CardContent className="p-0 max-h-[500px] overflow-y-auto">
-              {initialData.events.length === 0 && initialData.documents.length === 0 && <div className="p-6 text-center text-muted-foreground italic">No events or wiki docs.</div>}
+              {adminData.events.length === 0 && adminData.documents.length === 0 && <div className="p-6 text-center text-muted-foreground italic">No events or wiki docs.</div>}
               <table className="w-full text-sm text-left">
                 <tbody className="divide-y divide-slate-100">
-                  {initialData.events.map(event => (
+                  {adminData.events.map(event => (
                     <tr key={event.id} className="hover:bg-slate-50">
                       <td className="p-4">
                         <Badge variant="outline" className="text-[10px] mb-1">Event</Badge>
@@ -128,7 +458,7 @@ export function AdminDashboardClient({ initialData }: { initialData: AdminData }
                       </td>
                     </tr>
                   ))}
-                  {initialData.documents.map(doc => (
+                  {adminData.documents.map(doc => (
                     <tr key={doc.id} className="hover:bg-slate-50">
                       <td className="p-4">
                         <Badge variant="outline" className="text-[10px] mb-1">Wiki</Badge>
@@ -152,23 +482,241 @@ export function AdminDashboardClient({ initialData }: { initialData: AdminData }
             </CardContent>
           </Card>
         </div>
+
+        <Card className="shadow-sm border-slate-200">
+          <CardHeader className="bg-slate-50/50 border-b pb-4">
+            <CardTitle className="font-serif">Moderation Keywords</CardTitle>
+            <CardDescription>Manage first-pass rejection lists as plain text files, one keyword per line.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5 p-6">
+            <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-center">
+              <div>
+                <p className="text-sm font-medium text-slate-900">
+                  {adminData.active_moderation_keyword_count ?? adminData.moderation_keyword_count ?? 0} active keywords
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Uploaded files are combined for screening. Blank lines and lines starting with # are ignored.
+                </p>
+              </div>
+              <Button variant="outline" onClick={handleKeywordDownload}>
+                <Download className="mr-1.5 h-4 w-4" />
+                Download Merged TXT
+              </Button>
+            </div>
+
+            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/60 p-4">
+              <Label htmlFor="keyword-file">Upload keyword file</Label>
+              <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
+                <Input
+                  ref={keywordFileRef}
+                  id="keyword-file"
+                  type="file"
+                  accept=".txt,text/plain"
+                  className="bg-white"
+                />
+                <Button onClick={handleKeywordUpload} disabled={loading === "upload-keywords"}>
+                  {loading === "upload-keywords" ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Upload className="mr-1.5 h-4 w-4" />}
+                  Upload TXT
+                </Button>
+              </div>
+              {keywordImportResult && (
+                <p className="mt-3 text-xs font-medium text-emerald-700">{keywordImportResult}</p>
+              )}
+            </div>
+
+            <div className="rounded-lg border border-slate-200 overflow-hidden">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-slate-50 text-slate-600 font-medium">
+                  <tr>
+                    <th className="px-4 py-3">File</th>
+                    <th className="px-4 py-3">Keywords</th>
+                    <th className="px-4 py-3">Uploaded</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {(adminData.moderation_keyword_lists || []).map((list) => (
+                    <tr key={list.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-slate-900">{list.file_name}</p>
+                        <p className="text-xs text-muted-foreground">{list.created_by?.display_name || "Unknown"}</p>
+                      </td>
+                      <td className="px-4 py-3">{list.keyword_count}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{format(new Date(list.created_at), "MMM d, yyyy")}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleKeywordListDownload(list.id)}
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant={confirmDelete === `kw-list-${list.id}` ? "destructive" : "ghost"}
+                            size="sm"
+                            onClick={() => handleDeleteWithConfirm(`kw-list-${list.id}`, () => handleKeywordListDelete(list.id))}
+                            className={confirmDelete === `kw-list-${list.id}` ? "h-8 text-xs shadow-sm" : "h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"}
+                          >
+                            {loading === `delete-keyword-list-${list.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : confirmDelete === `kw-list-${list.id}` ? "Confirm?" : <Trash2 className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {(!adminData.moderation_keyword_lists || adminData.moderation_keyword_lists.length === 0) && (
+                    <tr>
+                      <td className="p-6 text-center text-muted-foreground italic" colSpan={4}>No keyword files uploaded.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-sm border-slate-200">
+          <CardHeader className="bg-slate-50/50 border-b pb-4">
+            <CardTitle className="font-serif">LLM Moderation</CardTitle>
+            <CardDescription>Configure the OpenAI-compatible Responses API call used after keyword screening.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5 p-6">
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50/70 p-4">
+              <div>
+                <p className="text-sm font-medium text-slate-900">Enable LLM review</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  If disabled or unavailable, posts that pass keywords go to manual review.
+                </p>
+                {hasServiceRoleKey ? (
+                  <p className="mt-1 text-xs text-emerald-700">
+                    Database settings are active for runtime moderation.
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-amber-700">
+                    Runtime database settings require SUPABASE_SERVICE_ROLE_KEY on the server; environment variables remain available as a fallback.
+                  </p>
+                )}
+              </div>
+              <Switch checked={llmEnabled} onCheckedChange={setLlmEnabled} aria-label="Enable LLM moderation" />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="llm-base-url">Base URL</Label>
+                <Input
+                  id="llm-base-url"
+                  value={llmBaseUrl}
+                  onChange={(e) => setLlmBaseUrl(e.target.value)}
+                  placeholder="https://api.openai.com/v1/responses"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="llm-model">Model</Label>
+                <Input
+                  id="llm-model"
+                  value={llmModel}
+                  onChange={(e) => setLlmModel(e.target.value)}
+                  placeholder="gpt-4.1-mini"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="llm-api-key">API Key</Label>
+              <Input
+                id="llm-api-key"
+                type="password"
+                value={llmApiKey}
+                onChange={(e) => {
+                  setLlmApiKey(e.target.value)
+                  if (e.target.value) setLlmClearApiKey(false)
+                }}
+                placeholder={adminData.moderation_llm_settings?.api_key_hint || "Paste a new key to update"}
+              />
+              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                <Badge variant={adminData.moderation_llm_settings?.api_key_configured ? "secondary" : "outline"}>
+                  {adminData.moderation_llm_settings?.api_key_configured ? `Configured ${adminData.moderation_llm_settings?.api_key_hint || ""}` : "No key configured"}
+                </Badge>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={llmClearApiKey}
+                    onChange={(e) => {
+                      setLlmClearApiKey(e.target.checked)
+                      if (e.target.checked) setLlmApiKey("")
+                    }}
+                  />
+                  Clear saved key
+                </label>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="llm-prompt">System Prompt</Label>
+              <Textarea
+                id="llm-prompt"
+                value={llmPrompt}
+                onChange={(e) => setLlmPrompt(e.target.value)}
+                className="min-h-40 resize-y"
+              />
+            </div>
+
+            <div className="flex flex-col gap-3 md:flex-row md:items-center">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleLlmTest}
+                disabled={!llmBaseUrl.trim() || !llmApiKey.trim() || !llmModel.trim() || !llmPrompt.trim() || loading === "test-llm-settings"}
+              >
+                {loading === "test-llm-settings" ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Bot className="mr-1.5 h-4 w-4" />}
+                Test Connection
+              </Button>
+              <Button
+                onClick={() => wrapAction("save-llm-settings", async () => {
+                  await updateModerationLlmSettings({
+                    enabled: llmEnabled,
+                    baseUrl: llmBaseUrl,
+                    apiKey: llmApiKey,
+                    clearApiKey: llmClearApiKey,
+                    model: llmModel,
+                    prompt: llmPrompt,
+                  })
+                  setLlmApiKey("")
+                  setLlmClearApiKey(false)
+                })}
+                disabled={!llmBaseUrl.trim() || !llmModel.trim() || !llmPrompt.trim()}
+              >
+                {loading === "save-llm-settings" ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-4 w-4" />}
+                Save LLM Settings
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Test uses only the current unsaved form values. Save separately to apply them to moderation.
+            </p>
+            {llmTestResult && (
+              <p className={`text-xs font-medium ${llmTestResult.ok ? "text-emerald-700" : "text-red-600"}`}>
+                {llmTestResult.message}
+              </p>
+            )}
+          </CardContent>
+        </Card>
       </TabsContent>
 
       {/* ===================== USERS TAB ===================== */}
       <TabsContent value="users" className="space-y-6 focus-visible:outline-none">
         <Card className="shadow-sm border-slate-200">
           <CardHeader>
-            <CardTitle className="font-serif">User Directory ({initialData.users.length})</CardTitle>
+            <CardTitle className="font-serif">User Directory ({adminData.users.length})</CardTitle>
             <CardDescription>Manage platform members. Deleting a user removes their profile permanently.</CardDescription>
           </CardHeader>
           <CardContent>
-            {initialData.users.length === 0 && (
+            {adminData.users.length === 0 && (
               <div className="p-8 text-center text-muted-foreground italic border-2 border-dashed rounded-xl">
                 <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-30" />
                 No users loaded. Ensure the admin SQL functions have been created.
               </div>
             )}
-            {initialData.users.length > 0 && (
+            {adminData.users.length > 0 && (
               <div className="rounded-xl border border-slate-200 overflow-hidden">
                 <table className="w-full text-sm text-left">
                   <thead className="bg-slate-50 text-slate-600 font-medium">
@@ -180,7 +728,7 @@ export function AdminDashboardClient({ initialData }: { initialData: AdminData }
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {initialData.users.map(user => (
+                    {adminData.users.map(user => (
                       <tr key={user.id} className="hover:bg-slate-50">
                         <td className="px-6 py-4">
                           <p className="font-semibold text-slate-900">{user.display_name || "Unknown"}</p>
@@ -193,6 +741,17 @@ export function AdminDashboardClient({ initialData }: { initialData: AdminData }
                           </Badge>
                         </td>
                         <td className="px-6 py-4 text-right">
+                          {user.role !== "admin" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => wrapAction(`admin-${user.id}`, () => setUserRole(user.id, "admin"))}
+                              className="mr-2 h-8"
+                            >
+                              <Shield className="h-4 w-4 mr-1.5" />
+                              Make Admin
+                            </Button>
+                          )}
                           {user.role !== "admin" && (
                             <Button
                               variant={confirmDelete === `del-user-${user.id}` ? "destructive" : "outline"}
@@ -266,10 +825,10 @@ export function AdminDashboardClient({ initialData }: { initialData: AdminData }
           </CardHeader>
           <CardContent className="p-0 max-h-[600px] overflow-y-auto">
             <div className="divide-y divide-slate-100">
-              {initialData.announcements.length === 0 && (
+              {adminData.announcements.length === 0 && (
                 <div className="p-8 text-center text-muted-foreground italic">No announcements broadcasted yet.</div>
               )}
-              {initialData.announcements.map(ann => (
+              {adminData.announcements.map(ann => (
                 <div key={ann.id} className="p-6">
                   <div className="flex justify-between items-start mb-2">
                     <h3 className="font-bold text-slate-900">{ann.title}</h3>

@@ -16,6 +16,14 @@ import { CommentSection } from "@/components/forum/comment-section"
 import { LikeButton } from "@/components/forum/like-button"
 import { ShareButton } from "@/components/forum/share-button"
 import { MarkdownContent } from "@/components/content/markdown-content"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 const ATTENDEES_PER_PAGE = 5
 const remoteImageLoader = ({ src }: ImageLoaderProps) => src
@@ -74,6 +82,7 @@ export function EventDetailClient({ event }: { event: EventDetailData }) {
   const [registrationMessage, setRegistrationMessage] = useState<string | null>(null)
   const [attendeePage, setAttendeePage] = useState(1)
   const [copiedEmail, setCopiedEmail] = useState<string | null>(null)
+  const [showPublicEmailRequiredDialog, setShowPublicEmailRequiredDialog] = useState(false)
 
   const registrationDeadline = event.registration_deadline ? new Date(event.registration_deadline) : null
   const isRegistrationClosed = registrationDeadline ? registrationDeadline < new Date() : false
@@ -209,6 +218,11 @@ export function EventDetailClient({ event }: { event: EventDetailData }) {
       return
     }
 
+    if (!hasPublicContactEmail) {
+      setShowPublicEmailRequiredDialog(true)
+      return
+    }
+
     setRegistrationActionLoading(true)
 
     const { error } = await supabase
@@ -227,11 +241,6 @@ export function EventDetailClient({ event }: { event: EventDetailData }) {
       setRegistrationMessage(getRegistrationErrorMessage(error.message))
     } else {
       await fetchRegistrations(session.user.id)
-      setRegistrationMessage(
-        hasPublicContactEmail
-          ? "You are registered for this event."
-          : "You are registered. Add a public email in your profile if you want organizers to contact you directly."
-      )
     }
 
     setRegistrationActionLoading(false)
@@ -253,7 +262,6 @@ export function EventDetailClient({ event }: { event: EventDetailData }) {
       setRegistrationMessage(getRegistrationErrorMessage(error.message))
     } else {
       await fetchRegistrations(sessionUserId)
-      setRegistrationMessage("Your registration has been cancelled.")
     }
 
     setRegistrationActionLoading(false)
@@ -261,6 +269,37 @@ export function EventDetailClient({ event }: { event: EventDetailData }) {
 
   return (
     <>
+      <Dialog open={showPublicEmailRequiredDialog} onOpenChange={setShowPublicEmailRequiredDialog}>
+        <DialogContent className="max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl">
+          <DialogHeader className="space-y-3">
+            <DialogTitle className="font-serif text-2xl text-slate-900">
+              Public email required
+            </DialogTitle>
+            <DialogDescription className="leading-relaxed text-slate-600">
+              Please add a public email in your profile before registering for this event.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowPublicEmailRequiredDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setShowPublicEmailRequiredDialog(false)
+                router.push(`/profile?highlight=public-email&returnTo=${encodeURIComponent(`/events/${event.id}`)}`)
+              }}
+            >
+              Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="container mx-auto px-4 md:px-8 py-10 max-w-5xl">
         <Link href="/events" className="flex items-center text-sm text-muted-foreground hover:text-primary mb-8 transition-colors">
           <CornerUpLeft className="mr-2 h-4 w-4" /> Back to Event Hub
@@ -537,20 +576,6 @@ export function EventDetailClient({ event }: { event: EventDetailData }) {
                   <ShareButton url={`/events/${event.id}`} className="flex-1 h-10" />
                 </div>
 
-                {!isOrganizer && !myActiveRegistration && !hasPublicContactEmail && (
-                  <p className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
-                    Registration works without a public email, but organizers can only contact you directly if you add one in{" "}
-                    <button
-                      type="button"
-                      className="font-semibold underline underline-offset-2"
-                      onClick={() => router.push(`/profile?highlight=public-email&returnTo=${encodeURIComponent(`/events/${event.id}`)}`)}
-                    >
-                      your profile
-                    </button>
-                    .
-                  </p>
-                )}
-
                 {!isOrganizer && myActiveRegistration && (
                   <p className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
                     You are registered for this event.
@@ -587,7 +612,7 @@ export function EventDetailClient({ event }: { event: EventDetailData }) {
 
 function getRegistrationErrorMessage(message: string) {
   if (message.includes("event_registrations")) {
-    return "The registration system needs the event_registrations table and policies before it can be used. Apply supabase/migrations/20260423_fix_event_registration_and_wiki_permissions.sql."
+    return "The registration system needs the event_registrations table and policies before it can be used."
   }
 
   return message

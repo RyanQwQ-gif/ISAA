@@ -1,10 +1,9 @@
+import { supabase } from "@/lib/supabase"
 import { notFound } from "next/navigation"
 import { EventDetailClient } from "@/components/events/event-detail-client"
-import { createServerSupabaseClient } from "@/lib/server-supabase"
 
 export default async function EventDetailPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   const params = await paramsPromise
-  const supabase = await createServerSupabaseClient()
   const { data: event } = await supabase
     .from("events")
     .select(`

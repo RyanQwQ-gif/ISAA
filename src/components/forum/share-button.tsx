@@ -35,7 +35,6 @@ export function ShareButton({ url, className, label = "Share" }: ShareButtonProp
 
   return (
     <Button 
-      type="button"
       variant="outline" 
       size="sm" 
       className={className ?? "h-10 px-4"}

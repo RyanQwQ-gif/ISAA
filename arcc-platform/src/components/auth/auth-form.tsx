@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { GraduationCap, Loader2 } from "lucide-react"
+import { Chrome, Github, GraduationCap, Loader2 } from "lucide-react"
 import Link from "next/link"
 
 interface AuthFormProps {
@@ -20,15 +20,28 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [loading, setLoading] = useState(false)
+  const [oauthLoading, setOauthLoading] = useState<"google" | "github" | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
-  const next = searchParams.get('next') || "/"
+  const next = sanitizeNext(searchParams.get("next"))
+  const nextQuery = next === "/" ? "" : `?next=${encodeURIComponent(next)}`
+  const isBusy = loading || oauthLoading !== null
+
+  const getCallbackUrl = () => {
+    const callbackUrl = new URL("/auth/callback", window.location.origin)
+    if (next !== "/") {
+      callbackUrl.searchParams.set("next", next)
+    }
+    return callbackUrl.toString()
+  }
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
+    setNotice(null)
 
     if (mode === "signup" && password !== confirmPassword) {
       setError("Passwords do not match!")
@@ -42,11 +55,13 @@ export function AuthForm({ mode }: AuthFormProps) {
           email,
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/auth/callback`,
+            emailRedirectTo: getCallbackUrl(),
           },
         })
         if (error) throw error
-        alert("Check your email for the confirmation link!")
+        setNotice("Check your email for the confirmation link before signing in.")
+        setPassword("")
+        setConfirmPassword("")
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email,
@@ -60,6 +75,31 @@ export function AuthForm({ mode }: AuthFormProps) {
       setError(getErrorMessage(err))
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleOAuth = async (provider: "google" | "github") => {
+    setOauthLoading(provider)
+    setError(null)
+    setNotice(null)
+
+    const options =
+      provider === "google"
+        ? {
+            redirectTo: getCallbackUrl(),
+            queryParams: { prompt: "select_account" },
+          }
+        : { redirectTo: getCallbackUrl() }
+
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options,
+      })
+      if (error) throw error
+    } catch (err: unknown) {
+      setError(getErrorMessage(err))
+      setOauthLoading(null)
     }
   }
 
@@ -85,6 +125,49 @@ export function AuthForm({ mode }: AuthFormProps) {
               {error}
             </div>
           )}
+          {notice && (
+            <div className="p-3 text-sm bg-emerald-50 text-emerald-700 rounded-md border border-emerald-100">
+              {notice}
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11"
+              disabled={isBusy}
+              onClick={() => handleOAuth("google")}
+            >
+              {oauthLoading === "google" ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Chrome className="mr-2 h-4 w-4" />
+              )}
+              Google
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11"
+              disabled={isBusy}
+              onClick={() => handleOAuth("github")}
+            >
+              {oauthLoading === "github" ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Github className="mr-2 h-4 w-4" />
+              )}
+              GitHub
+            </Button>
+          </div>
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-slate-200" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-2 text-muted-foreground">or use email</span>
+            </div>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="email">Email address</Label>
             <Input 
@@ -130,7 +213,7 @@ export function AuthForm({ mode }: AuthFormProps) {
           )}
         </CardContent>
         <CardFooter className="flex flex-col space-y-4">
-          <Button className="w-full h-11" type="submit" disabled={loading}>
+          <Button className="w-full h-11" type="submit" disabled={isBusy}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {mode === "login" ? "Sign In" : "Sign Up"}
           </Button>
@@ -138,14 +221,14 @@ export function AuthForm({ mode }: AuthFormProps) {
             {mode === "login" ? (
               <>
                 Don&apos;t have an account?{" "}
-                <Link href="/signup" className="text-primary hover:underline font-medium">
+                <Link href={`/signup${nextQuery}`} className="text-primary hover:underline font-medium">
                   Create one
                 </Link>
               </>
             ) : (
               <>
                 Already have an account?{" "}
-                <Link href="/login" className="text-primary hover:underline font-medium">
+                <Link href={`/login${nextQuery}`} className="text-primary hover:underline font-medium">
                   Sign in
                 </Link>
               </>
@@ -158,5 +241,16 @@ export function AuthForm({ mode }: AuthFormProps) {
 }
 
 function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Something went wrong."
+  if (!(error instanceof Error)) return "Something went wrong."
+  if (error.message.toLowerCase().includes("email not confirmed")) {
+    return "Please confirm your email before signing in."
+  }
+  return error.message
+}
+
+function sanitizeNext(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return "/"
+  }
+  return value
 }

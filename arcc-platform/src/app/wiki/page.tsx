@@ -10,6 +10,7 @@ import Link from "next/link"
 import { Input } from "@/components/ui/input"
 import { formatDistanceToNow } from "date-fns"
 import { FilterMenu } from "@/components/ui/filter-menu"
+import { getMarkdownPreview } from "@/lib/markdown"
 
 export default function WikiListingPage() {
   const [documents, setDocuments] = useState<any[]>([])
@@ -27,12 +28,7 @@ export default function WikiListingPage() {
     const { data } = await supabase
       .from("documents")
       .select(`
-        id,
-        title,
-        content,
-        updated_at,
-        subject_tags,
-        school_tags,
+        *,
         creator:users!creator_id(display_name)
       `)
       .order("updated_at", { ascending: false })
@@ -109,11 +105,17 @@ export default function WikiListingPage() {
                 </CardHeader>
                 <CardContent className="p-6 flex-1 flex flex-col justify-between space-y-4">
                   <p className="text-sm text-muted-foreground line-clamp-3 italic leading-relaxed">
-                    {doc.content.substring(0, 150)}...
+                    {getMarkdownPreview(doc.content || "") || "No preview available."}
                   </p>
                   
                   {/* Tag Display */}
                   <div className="flex flex-wrap gap-1.5 pt-2">
+                    <Badge
+                      variant="outline"
+                      className={doc.allow_public_edit ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-50 text-slate-600"}
+                    >
+                      {doc.allow_public_edit ? "Public Edit" : "View Only"}
+                    </Badge>
                     {(doc.subject_tags || []).slice(0, 3).map((tag: string) => (
                       <Badge key={tag} variant="secondary" className="bg-primary/10 text-primary border-primary/20 font-normal text-xs">{tag}</Badge>
                     ))}

@@ -1,9 +1,11 @@
-import { createServerClient } from '@supabase/ssr'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function proxy(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
+  let response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
   })
 
   const supabase = createServerClient(
@@ -11,65 +13,51 @@ export async function proxy(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() {
-          return request.cookies.getAll()
+        get(name: string) {
+          return request.cookies.get(name)?.value
         },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          )
-          supabaseResponse = NextResponse.next({
-            request,
+        set(name: string, value: string, options: CookieOptions) {
+          request.cookies.set({ name, value, ...options })
+          response = NextResponse.next({
+            request: {
+              headers: request.headers,
+            },
           })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          )
+          response.cookies.set({ name, value, ...options })
+        },
+        remove(name: string, options: CookieOptions) {
+          request.cookies.set({ name, value: '', ...options })
+          response = NextResponse.next({
+            request: {
+              headers: request.headers,
+            },
+          })
+          response.cookies.set({ name, value: '', ...options })
         },
       },
     }
   )
 
-  // IMPORTANT: Do not add logic between createServerClient and supabase.auth.getUser().
-  // A simple mistake could make it very hard to debug issues with users being
-  // randomly logged out.
-
   const { data: { user } } = await supabase.auth.getUser()
 
   const pathname = request.nextUrl.pathname
 
-  const protectedPaths = ['/profile', '/admin', '/wiki/new', '/forum/new', '/events/new']
+  const protectedPaths = ['/profile', '/wiki/new', '/forum/new', '/events/new']
   const isProtectedPath = protectedPaths.some(path => pathname.startsWith(path))
 
   if (!user && isProtectedPath) {
     const url = new URL('/login', request.url)
     url.searchParams.set('next', pathname)
     const redirectResponse = NextResponse.redirect(url)
-    // Copy refreshed auth cookies to redirect response
-    supabaseResponse.cookies.getAll().forEach((cookie) => {
+    response.cookies.getAll().forEach((cookie) => {
       redirectResponse.cookies.set(cookie.name, cookie.value)
     })
     return redirectResponse
   }
 
-  if (user && pathname.startsWith('/admin')) {
-    const { data: profile } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (profile?.role !== 'admin') {
-      const redirectHome = NextResponse.redirect(new URL('/', request.url))
-      supabaseResponse.cookies.getAll().forEach((cookie) => {
-        redirectHome.cookies.set(cookie.name, cookie.value)
-      })
-      return redirectHome
-    }
-  }
-
-  return supabaseResponse
+  return response
 }
 
 export const config = {
-  matcher: ['/profile/:path*', '/admin/:path*', '/wiki/new', '/forum/new', '/events/new'],
+  matcher: ['/profile/:path*', '/wiki/new', '/forum/new', '/events/new'],
 }

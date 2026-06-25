@@ -1,4 +1,3 @@
-import { supabase } from "@/lib/supabase"
 import { notFound } from "next/navigation"
 import { format } from "date-fns"
 import { Button } from "@/components/ui/button"
@@ -13,9 +12,11 @@ import { CommentSection } from "@/components/forum/comment-section"
 import { LikeButton } from "@/components/forum/like-button"
 import { ShareButton } from "@/components/forum/share-button"
 import { Metadata } from 'next'
+import { createServerSupabaseClient } from "@/lib/server-supabase"
 
 export async function generateMetadata({ params: paramsPromise }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const params = await paramsPromise
+  const supabase = await createServerSupabaseClient()
   const { data: article } = await supabase.from("articles").select("title, abstract").eq("id", params.id).single()
   return {
     title: `${article?.title || 'Article'} | ISAA Forum`,
@@ -25,6 +26,7 @@ export async function generateMetadata({ params: paramsPromise }: { params: Prom
 
 export default async function ArticleDetailPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   const params = await paramsPromise
+  const supabase = await createServerSupabaseClient()
   // Fetch article with counts
   const { data: article } = await supabase
     .from("articles")
@@ -35,6 +37,7 @@ export default async function ArticleDetailPage({ params: paramsPromise }: { par
       comments_count:comments(count)
     `)
     .eq("id", params.id)
+    .eq("status", "approved")
     .single()
 
   if (!article) {

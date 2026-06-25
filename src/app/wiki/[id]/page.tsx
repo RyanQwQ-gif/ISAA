@@ -14,8 +14,8 @@ import {
     Clock, 
     User as UserIcon, 
     Loader2,
-    Users,
-    Eye,
+    Users as CollaborativeIcon,
+    History,
     Download
 } from "lucide-react"
 import Link from "next/link"
@@ -25,9 +25,6 @@ import remarkMath from "remark-math"
 import rehypeKatex from "rehype-katex"
 import { formatDistanceToNow } from "date-fns"
 import dynamic from "next/dynamic"
-import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
-import { isMissingColumnError } from "@/lib/supabase-errors"
 
 const MDEditor = dynamic(() => import("@uiw/react-md-editor"), { ssr: false })
 
@@ -41,7 +38,6 @@ interface DocumentRecord {
   subject_tags: string[] | null
   school_tags: string[] | null
   file_url: string | null
-  allow_public_edit?: boolean | null
   creator?: {
     id: string
     display_name: string
@@ -55,13 +51,10 @@ export default function DocumentPage({ params: paramsPromise }: { params: Promis
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [content, setContent] = useState("")
-  const [allowPublicEdit, setAllowPublicEdit] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [session, setSession] = useState<{ user?: { id: string } } | null>(null)
-  const isCreator = session?.user?.id === doc?.creator_id
-  const isPublicEditable = Boolean(doc?.allow_public_edit)
-  const canEdit = Boolean(session?.user?.id) && (isCreator || isPublicEditable)
+  const canEdit = session?.user?.id === doc?.creator_id
 
   const fetchDocument = useCallback(async () => {
     const { data } = await supabase
@@ -76,7 +69,6 @@ export default function DocumentPage({ params: paramsPromise }: { params: Promis
       setTitle(document.title)
       setDescription(document.description || "")
       setContent(document.content)
-      setAllowPublicEdit(Boolean(document.allow_public_edit))
     }
     setLoading(false)
   }, [params.id])
@@ -97,9 +89,13 @@ export default function DocumentPage({ params: paramsPromise }: { params: Promis
           table: 'documents',
           filter: `id=eq.${params.id}`,
         },
-        () => {
+        (payload) => {
           if (!isEditing) {
-            void fetchDocument()
+            const updatedDocument = payload.new as DocumentRecord
+            setDoc(updatedDocument)
+            setTitle(updatedDocument.title)
+            setDescription(updatedDocument.description || "")
+            setContent(updatedDocument.content)
           }
         }
       )
@@ -121,45 +117,16 @@ export default function DocumentPage({ params: paramsPromise }: { params: Promis
       return
     }
     setSaving(true)
-    const basePayload = {
-      title,
-      description,
-      content,
-      updated_at: new Date().toISOString(),
-    }
-
-    const updatePayload = isCreator
-      ? { ...basePayload, allow_public_edit: allowPublicEdit }
-      : basePayload
-
-    let query = supabase
+    const { error } = await supabase
       .from("documents")
-      .update(updatePayload)
+      .update({
+        title,
+        description,
+        content,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", params.id)
-
-    if (isCreator) {
-      query = query.eq("creator_id", sessionUserId)
-    } else {
-      query = query.eq("allow_public_edit", true)
-    }
-
-    let { error } = await query
-
-    if (error && isCreator && isMissingColumnError(error, "allow_public_edit")) {
-      if (allowPublicEdit) {
-        alert("Public editing needs the latest database migration. Apply supabase/migrations/20260423_fix_event_registration_and_wiki_permissions.sql first.")
-        setSaving(false)
-        return
-      }
-
-      const fallbackResult = await supabase
-        .from("documents")
-        .update(basePayload)
-        .eq("id", params.id)
-        .eq("creator_id", sessionUserId)
-
-      error = fallbackResult.error
-    }
+      .eq("creator_id", sessionUserId)
 
     if (!error) {
       await fetchDocument()
@@ -202,13 +169,8 @@ export default function DocumentPage({ params: paramsPromise }: { params: Promis
             <div className="flex items-center gap-2 mb-1">
               <Badge variant="outline" className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground border-slate-200">Wiki Document</Badge>
               {!isEditing && (
-                <Badge
-                  className={isPublicEditable
-                    ? "bg-emerald-50 text-emerald-600 border-emerald-100 flex items-center gap-1 text-[10px] uppercase tracking-wider"
-                    : "bg-slate-100 text-slate-700 border-slate-200 flex items-center gap-1 text-[10px] uppercase tracking-wider"}
-                >
-                  {isPublicEditable ? <Users className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                  {isPublicEditable ? "Public Edit" : "View Only"}
+                <Badge className="bg-emerald-50 text-emerald-600 border-emerald-100 flex items-center gap-1 text-[10px] uppercase tracking-wider">
+                  <CollaborativeIcon className="h-3 w-3" /> Live
                 </Badge>
               )}
             </div>
@@ -245,23 +207,6 @@ export default function DocumentPage({ params: paramsPromise }: { params: Promis
                   placeholder="Brief description of this document..."
                   className="h-20 resize-none shadow-sm"
                 />
-                {isCreator && (
-                  <div className="flex items-start justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <div className="space-y-1">
-                      <Label htmlFor="allow-public-edit" className="text-sm font-medium text-slate-900">
-                        Allow public editing
-                      </Label>
-                      <p className="text-sm text-muted-foreground">
-                        When enabled, any signed-in user can edit this wiki.
-                      </p>
-                    </div>
-                    <Switch
-                      id="allow-public-edit"
-                      checked={allowPublicEdit}
-                      onCheckedChange={setAllowPublicEdit}
-                    />
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -272,7 +217,7 @@ export default function DocumentPage({ params: paramsPromise }: { params: Promis
             <>
               {canEdit && (
                 <Button onClick={() => setIsEditing(true)} className="rounded-xl shadow-lg shadow-primary/10 h-11 px-6">
-                  <Edit3 className="mr-2 h-4 w-4" /> {isCreator ? "Edit Wiki" : "Contribute"}
+                  <Edit3 className="mr-2 h-4 w-4" /> Edit & Collaborate
                 </Button>
               )}
             </>
@@ -382,20 +327,15 @@ export default function DocumentPage({ params: paramsPromise }: { params: Promis
                     <p className="font-medium text-slate-900">{formatDistanceToNow(new Date(doc.updated_at))} ago</p>
                   </div>
                 </div>
-
-                <div className="flex items-start gap-3 pt-4 border-t border-slate-100">
-                  <div className={`mt-0.5 p-1.5 rounded-lg ${isPublicEditable ? "bg-emerald-100" : "bg-slate-100"}`}>
-                    {isPublicEditable ? <Users className="h-4 w-4 text-emerald-700" /> : <Eye className="h-4 w-4 text-slate-600" />}
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-0.5">Collaboration Mode</p>
-                    <p className="font-medium text-slate-900">{isPublicEditable ? "Public Edit" : "Public View Only"}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {isPublicEditable
-                        ? "Any signed-in user can improve this document."
-                        : "Only the original author can edit this document."}
-                    </p>
-                  </div>
+                
+                <div className="pt-4 border-t border-slate-100 space-y-3">
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground uppercase tracking-tighter">Version Control</span>
+                        <Badge variant="outline" className="text-[10px] bg-slate-50 font-mono">v1.2.4-stable</Badge>
+                    </div>
+                    <Button variant="ghost" size="sm" className="w-full justify-start text-xs rounded-lg h-9">
+                        <History className="mr-2 h-3.5 w-3.5" /> View Version History
+                    </Button>
                 </div>
 
                 {doc.file_url && (

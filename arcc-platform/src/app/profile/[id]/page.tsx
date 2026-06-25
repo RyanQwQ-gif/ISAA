@@ -1,4 +1,3 @@
-import { supabase } from "@/lib/supabase"
 import { notFound } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -6,9 +5,11 @@ import { GraduationCap } from "lucide-react"
 import { MyContentTabs } from "@/components/profile/my-content-tabs"
 import { Metadata } from 'next'
 import { ContactAuthorDialog } from "@/components/profile/contact-author-dialog"
+import { createServerSupabaseClient } from "@/lib/server-supabase"
 
 export async function generateMetadata({ params: paramsPromise }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const params = await paramsPromise
+  const supabase = await createServerSupabaseClient()
   const { data: user } = await supabase.from("users").select("display_name").eq("id", params.id).single()
   return {
     title: `${user?.display_name || 'Profile'} | ISAA Platform`,
@@ -18,6 +19,7 @@ export async function generateMetadata({ params: paramsPromise }: { params: Prom
 
 export default async function PublicProfilePage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   const params = await paramsPromise
+  const supabase = await createServerSupabaseClient()
   const { data: profile } = await supabase
     .from("users")
     .select("id, display_name, school, bio, role, avatar_url, created_at, show_contact_email, contact_email")
