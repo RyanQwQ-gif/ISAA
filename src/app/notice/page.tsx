@@ -1,6 +1,6 @@
 import Link from "next/link"
 
-const lastUpdated = "June 24, 2026"
+const lastUpdated = "July 1, 2026"
 
 export default function CrossBorderNoticePage() {
   return (
@@ -13,20 +13,21 @@ export default function CrossBorderNoticePage() {
 
       <div className="prose prose-slate mt-8 max-w-none space-y-8">
         <section className="space-y-3 rounded-lg border bg-slate-50 p-4">
-          <h2 className="font-serif text-xl font-semibold text-primary">Information Needed</h2>
+          <h2 className="font-serif text-xl font-semibold text-primary">Items Still To Confirm</h2>
           <p>
-            [To be completed: overseas recipient names, countries or regions, contact methods, processing purposes,
-            processing methods, data categories, security measures, retention periods, and procedures for exercising
-            rights with overseas recipients.]
+            ISAA still needs to confirm exact legal entity names, contact methods, retention periods, detailed
+            contractual safeguards, and the procedure for forwarding personal-information rights requests to overseas
+            service providers. Current request email: wuzj.ryan2024@gdhfi.com.
           </p>
         </section>
 
         <section className="space-y-3">
           <h2 className="font-serif text-2xl font-semibold text-primary">1. Why This Notice Is Provided</h2>
           <p>
-            ISAA may rely on service providers whose servers, support teams, or subprocessors are located outside
-            mainland China. This Notice explains the categories of personal information that may be transferred or
-            accessed cross-border when you use the platform.
+            ISAA is created by a team in mainland China and primarily serves users in mainland China. ISAA may rely on
+            service providers whose servers, support teams, or subprocessors are located outside mainland China. This
+            Notice explains the categories of personal information that may be transferred or accessed cross-border when
+            you use the platform.
           </p>
         </section>
 
@@ -34,9 +35,10 @@ export default function CrossBorderNoticePage() {
           <h2 className="font-serif text-2xl font-semibold text-primary">2. Transfer Scenarios</h2>
           <p>
             Cross-border processing may occur when ISAA uses cloud authentication, database, file storage, email
-            confirmation, session management, or automated moderation services. Current code indicates use of Supabase
-            for authentication, database, and storage, and optional OpenAI-compatible language-model moderation if
-            enabled by administrators.
+            confirmation, session management, CDN/security services, application hosting, or automated moderation
+            services. Current planned providers include Hytron servers in Hong Kong for application hosting, Cloudflare
+            for domain services, DNS, CDN, traffic security, and edge logs, Supabase for authentication, database,
+            storage, sessions, and verification emails, and OpenAI for optional automated moderation.
           </p>
         </section>
 
@@ -45,7 +47,8 @@ export default function CrossBorderNoticePage() {
           <p>
             The categories may include account email, user ID, authentication metadata, profile fields, avatar files,
             public contact email preference, articles, abstracts, comments, likes, event records, wiki files, uploaded
-            file URLs, moderation data, and technical information required for secure sessions.
+            file URLs, moderation data, IP address, device/browser information, CDN logs, server logs, and technical
+            information required for secure sessions.
           </p>
         </section>
 
@@ -54,17 +57,30 @@ export default function CrossBorderNoticePage() {
           <p>
             Cross-border processing is used to provide account access, host platform data, store uploaded files, support
             academic publishing, enable comments and likes, manage event participation, operate moderation, maintain
-            security, and troubleshoot service issues.
+            security, deliver verification emails, route and protect network traffic, cache website assets, and
+            troubleshoot service issues.
           </p>
         </section>
 
         <section className="space-y-3">
           <h2 className="font-serif text-2xl font-semibold text-primary">5. Overseas Recipients</h2>
-          <p>
-            [To be completed: exact overseas recipient legal names, countries or regions, contact details, and links to
-            their privacy or data processing terms. Potential recipients based on current code may include Supabase and,
-            if enabled, an OpenAI-compatible moderation provider.]
-          </p>
+          <ul className="list-disc space-y-2 pl-6">
+            <li>
+              Cloudflare: domain, DNS, CDN, traffic security, edge caching, and related logs. Processing may occur in
+              countries and regions where Cloudflare operates.
+            </li>
+            <li>
+              Hytron: Hong Kong server hosting for the ISAA application and server-side operational logs.
+            </li>
+            <li>
+              Supabase: authentication, database, storage, sessions, and verification emails. Processing may occur in
+              countries and regions where Supabase and its subprocessors operate.
+            </li>
+            <li>
+              OpenAI: optional automated moderation after keyword screening. ISAA may send article titles, abstracts,
+              content, and moderation metadata to OpenAI when the feature is enabled.
+            </li>
+          </ul>
         </section>
 
         <section className="space-y-3">
@@ -80,8 +96,8 @@ export default function CrossBorderNoticePage() {
           <h2 className="font-serif text-2xl font-semibold text-primary">7. How to Exercise Rights</h2>
           <p>
             You may request access, correction, deletion, withdrawal of consent, or an explanation of cross-border
-            processing through the platform contact channel. [To be completed: request email, verification procedure,
-            response timeframe, and how requests are forwarded to overseas recipients.]
+            processing by contacting wuzj.ryan2024@gdhfi.com. The verification procedure, response timeframe, and
+            forwarding process for overseas recipients are still to be confirmed.
           </p>
         </section>
 
@@ -90,8 +106,10 @@ export default function CrossBorderNoticePage() {
           <p>
             Different jurisdictions may have different data protection laws. ISAA will use reasonable technical and
             organizational measures to protect personal information, including access controls and service-provider
-            arrangements where applicable. [To be completed: specific contractual safeguards, encryption practices, and
-            access control procedures.]
+            arrangements where applicable. Current safeguards include account authentication, role-based administrator
+            access, service secrets kept server-side, HTTPS transport, Cloudflare traffic protection, and provider-side
+            security controls. Specific contractual safeguards, retention periods, and internal access-control procedures
+            are still to be confirmed.
           </p>
         </section>
 

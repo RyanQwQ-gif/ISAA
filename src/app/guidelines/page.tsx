@@ -1,6 +1,6 @@
 import Link from "next/link"
 
-const lastUpdated = "June 24, 2026"
+const lastUpdated = "July 1, 2026"
 
 export default function GuidelinesPage() {
   return (
@@ -35,7 +35,8 @@ export default function GuidelinesPage() {
           <p>
             Discussion should remain constructive, evidence-based, and suitable for a student academic community.
             Harassment, threats, hate speech, bullying, sexual content, doxxing, spam, and non-academic advertising
-            are not allowed.
+            are not allowed. Users must not publish content that violates applicable mainland China laws, encourages
+            illegal activity, promotes scams, shares dangerous instructions, or creates school-community safety risks.
           </p>
         </section>
 
@@ -63,7 +64,8 @@ export default function GuidelinesPage() {
           <p>
             Forum articles may be reviewed using keyword rules, automated moderation, and manual administrator review.
             Moderation may approve, reject, remove, or hold content for review when it appears unsafe, unlawful,
-            irrelevant, low quality, or inconsistent with these Guidelines.
+            irrelevant, low quality, or inconsistent with these Guidelines. Automated moderation may use OpenAI after
+            keyword screening; administrators may manually approve or reject content.
           </p>
         </section>
 
@@ -77,10 +79,10 @@ export default function GuidelinesPage() {
         </section>
 
         <section className="space-y-3 rounded-lg border bg-slate-50 p-4">
-          <h2 className="font-serif text-xl font-semibold text-primary">Information Needed</h2>
+          <h2 className="font-serif text-xl font-semibold text-primary">Items Still To Confirm</h2>
           <p>
-            [To be completed: official reporting email, appeal process, response timeframe, and the platform operator&apos;s
-            legal name.]
+            Reports and appeals may be sent to wuzj.ryan2024@gdhfi.com. ISAA still needs to confirm the detailed appeal
+            process, response timeframe, and the platform operator&apos;s legal name.
           </p>
         </section>
 
